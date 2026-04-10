@@ -1,0 +1,15 @@
+2026-04-10 23:31:10 | CREATE | perplexity_cli/__init__.py               |    1 |     +1 | 
+2026-04-10 23:31:15 | CREATE | perplexity_cli/client.py                 |   30 |    +30 | 
+2026-04-10 23:31:41 | CREATE | perplexity_cli/models.py                 |  146 |   +146 | 
+2026-04-10 23:31:52 | CREATE | perplexity_cli/output.py                 |   96 |    +96 | 
+2026-04-10 23:33:03 | REMOVE | perplexity_cli/models.py                 |    0 |   -146 | 
+2026-04-10 23:33:03 | REMOVE | perplexity_cli/client.py                 |    0 |    -30 | 
+2026-04-10 23:33:03 | REMOVE | perplexity_cli/__init__.py               |    0 |     -1 | 
+2026-04-10 23:33:03 | REMOVE | perplexity_cli/output.py                 |    0 |    -96 | 
+2026-04-10 23:33:07 | CREATE | main.py                                  |    6 |     +6 | 
+2026-04-10 23:33:31 | REMOVE | main.py                                  |    0 |     -6 | 
+2026-04-10 23:33:46 | CREATE | perplexity_cli/__init__.py               |    1 |     +1 | 
+2026-04-10 23:33:51 | CREATE | perplexity_cli/client.py                 |   30 |    +30 | 
+2026-04-10 23:34:13 | CREATE | perplexity_cli/models.py                 |  146 |   +146 | 
+2026-04-10 23:34:24 | CREATE | perplexity_cli/output.py                 |   92 |    +92 | 
+2026-04-10 23:36:04 | CREATE | perplexity_cli/main.py                   |  744 |   +744 | 

@@ -1,0 +1,139 @@
+{
+  "updated_at": "2026-04-10T23:36:04.103745+08:00",
+  "file_count": 5,
+  "hubs": null,
+  "importers": {},
+  "imports": {},
+  "recent_events": [
+    {
+      "time": "2026-04-10T23:31:10.130222+08:00",
+      "op": "CREATE",
+      "path": "perplexity_cli/__init__.py",
+      "lang": "python",
+      "lines": 1,
+      "delta": 1,
+      "size_delta": 22
+    },
+    {
+      "time": "2026-04-10T23:31:15.838375+08:00",
+      "op": "CREATE",
+      "path": "perplexity_cli/client.py",
+      "lang": "python",
+      "lines": 30,
+      "delta": 30,
+      "size_delta": 1019
+    },
+    {
+      "time": "2026-04-10T23:31:41.356482+08:00",
+      "op": "CREATE",
+      "path": "perplexity_cli/models.py",
+      "lang": "python",
+      "lines": 146,
+      "delta": 146,
+      "size_delta": 5301
+    },
+    {
+      "time": "2026-04-10T23:31:52.7311+08:00",
+      "op": "CREATE",
+      "path": "perplexity_cli/output.py",
+      "lang": "python",
+      "lines": 96,
+      "delta": 96,
+      "size_delta": 2878
+    },
+    {
+      "time": "2026-04-10T23:33:03.484433+08:00",
+      "op": "REMOVE",
+      "path": "perplexity_cli/models.py",
+      "lang": "python",
+      "delta": -146,
+      "size_delta": -5301
+    },
+    {
+      "time": "2026-04-10T23:33:03.4849+08:00",
+      "op": "REMOVE",
+      "path": "perplexity_cli/client.py",
+      "lang": "python",
+      "delta": -30,
+      "size_delta": -1019
+    },
+    {
+      "time": "2026-04-10T23:33:03.485243+08:00",
+      "op": "REMOVE",
+      "path": "perplexity_cli/__init__.py",
+      "lang": "python",
+      "delta": -1,
+      "size_delta": -22
+    },
+    {
+      "time": "2026-04-10T23:33:03.485348+08:00",
+      "op": "REMOVE",
+      "path": "perplexity_cli/output.py",
+      "lang": "python",
+      "delta": -96,
+      "size_delta": -2878
+    },
+    {
+      "time": "2026-04-10T23:33:07.189733+08:00",
+      "op": "CREATE",
+      "path": "main.py",
+      "lang": "python",
+      "lines": 6,
+      "delta": 6,
+      "size_delta": 92
+    },
+    {
+      "time": "2026-04-10T23:33:31.022458+08:00",
+      "op": "REMOVE",
+      "path": "main.py",
+      "lang": "python",
+      "delta": -6,
+      "size_delta": -92
+    },
+    {
+      "time": "2026-04-10T23:33:46.654129+08:00",
+      "op": "CREATE",
+      "path": "perplexity_cli/__init__.py",
+      "lang": "python",
+      "lines": 1,
+      "delta": 1,
+      "size_delta": 22
+    },
+    {
+      "time": "2026-04-10T23:33:51.94497+08:00",
+      "op": "CREATE",
+      "path": "perplexity_cli/client.py",
+      "lang": "python",
+      "lines": 30,
+      "delta": 30,
+      "size_delta": 1019
+    },
+    {
+      "time": "2026-04-10T23:34:13.996388+08:00",
+      "op": "CREATE",
+      "path": "perplexity_cli/models.py",
+      "lang": "python",
+      "lines": 146,
+      "delta": 146,
+      "size_delta": 5301
+    },
+    {
+      "time": "2026-04-10T23:34:24.498841+08:00",
+      "op": "CREATE",
+      "path": "perplexity_cli/output.py",
+      "lang": "python",
+      "lines": 92,
+      "delta": 92,
+      "size_delta": 2811
+    },
+    {
+      "time": "2026-04-10T23:36:04.072241+08:00",
+      "op": "CREATE",
+      "path": "perplexity_cli/main.py",
+      "lang": "python",
+      "lines": 744,
+      "delta": 744,
+      "size_delta": 24786
+    }
+  ]
+}

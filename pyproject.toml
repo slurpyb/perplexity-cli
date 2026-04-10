@@ -1,0 +1,22 @@
+[project]
+name = "perplexity-cli"
+version = "0.1.0"
+description = "CLI tool wrapping the Perplexity AI API for web search, chat completions, and streaming conversations"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "perplexityai>=0.31.0",
+    "pydantic>=2.12.5",
+    "rich>=14.3.3",
+    "typer>=0.24.1",
+]
+
+[project.scripts]
+perplexity-cli = "perplexity_cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["perplexity_cli"]
