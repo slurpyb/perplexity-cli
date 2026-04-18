@@ -508,7 +508,7 @@ def ask(
     if question is not None:
         cli_kwargs["question"] = question
 
-    if raw_json:
+    if raw_json or any(v is not None for v in cli_kwargs.values()):
         params = merge_json_with_cli(AskInput, raw_json, cli_kwargs)
     elif question is not None:
         params = AskInput(question=question, model=model)
@@ -679,7 +679,7 @@ def chat(
     if question is not None:
         cli_kwargs["question"] = question
 
-    if raw_json:
+    if raw_json or any(v is not None for v in cli_kwargs.values()):
         params = merge_json_with_cli(AskInput, raw_json, cli_kwargs)
     elif question is not None:
         params = AskInput(question=question, model=model)
