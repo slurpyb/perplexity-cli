@@ -133,10 +133,7 @@ def merge_json_with_cli(
     """
     base: dict[str, Any] = {}
     if json_str:
-        try:
-            base = json.loads(json_str)
-        except json.JSONDecodeError as exc:
-            raise SystemExit(f"Invalid JSON input: {exc}") from exc
+        base = json.loads(json_str)
 
     # Overlay CLI kwargs that were explicitly provided (not None)
     for key, value in cli_kwargs.items():

@@ -13,10 +13,18 @@ def get_client(api_key: str | None = None) -> Perplexity:
     1. Explicit api_key argument (from --api-key CLI option)
     2. PERPLEXITY_API_KEY environment variable (handled by the SDK)
 
+    An empty string is treated as explicit-but-invalid and rejected.
     If neither is available, prints a helpful error and exits.
     """
+    if api_key == "":
+        print(
+            "Error: --api-key was passed an empty value.\n"
+            "Provide a real key or unset the flag to fall back to PERPLEXITY_API_KEY.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     try:
-        return Perplexity(api_key=api_key) if api_key else Perplexity()
+        return Perplexity(api_key=api_key) if api_key is not None else Perplexity()
     except PerplexityError:
         print(
             "Error: No API key found.\n\n"

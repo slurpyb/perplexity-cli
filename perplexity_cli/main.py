@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import json
 import sys
 from functools import wraps
 from typing import Annotated, Any
 
+import os
+
 import typer
 from pydantic import ValidationError
-from perplexity import APIStatusError
+from perplexity import APIError, APIStatusError
 
 from .client import get_client
 from .models import AskInput, AskOutput, SearchInput, SearchOutput, SearchResultItem, UsageInfo, merge_json_with_cli
@@ -66,6 +69,13 @@ def handle_errors(f):
                 fmt,
                 exit_code=4,
             )
+        except json.JSONDecodeError as exc:
+            render_error(
+                "Invalid JSON input",
+                str(exc),
+                fmt,
+                exit_code=4,
+            )
         except APIStatusError as exc:
             code_map = {401: 2, 429: 3, 400: 4}
             exit_code = code_map.get(exc.status_code, 5 if exc.status_code >= 500 else 1)
@@ -78,8 +88,17 @@ def handle_errors(f):
         except KeyboardInterrupt:
             print(file=sys.stderr)
             raise SystemExit(130)
+        except APIError as exc:
+            render_error("API error", str(exc), fmt, exit_code=5)
         except Exception as exc:
-            render_error("Unexpected error", str(exc), fmt)
+            if os.environ.get("PERPLEXITY_CLI_DEBUG"):
+                raise
+            render_error(
+                "Internal CLI error",
+                f"{type(exc).__name__}: {exc}. Set PERPLEXITY_CLI_DEBUG=1 for traceback.",
+                fmt,
+                exit_code=70,
+            )
 
     return wrapper
 
@@ -160,6 +179,14 @@ def _read_json_input(json_input: str | None) -> str | None:
 def _sdk_kwargs(**kwargs: Any) -> dict[str, Any]:
     """Filter out None values so the SDK uses its own defaults."""
     return {k: v for k, v in kwargs.items() if v is not None}
+
+
+def _split_csv(value: str | None) -> list[str] | None:
+    """Split comma-separated string, trim entries, drop empties."""
+    if value is None:
+        return None
+    items = [v.strip() for v in value.split(",") if v.strip()]
+    return items or None
 
 
 # ---------------------------------------------------------------------------
@@ -296,8 +323,8 @@ def search(
     cli_kwargs: dict[str, Any] = {
         "search_mode": mode,
         "search_recency_filter": recency,
-        "search_domain_filter": domains.split(",") if domains else None,
-        "search_language_filter": language.split(",") if language else None,
+        "search_domain_filter": _split_csv(domains),
+        "search_language_filter": _split_csv(language),
         "max_results": max_results,
         "country": country,
         "search_after_date_filter": after,
@@ -365,13 +392,13 @@ def ask(
         ),
     ] = None,
     model: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--model",
             "-m",
             help=(
                 "The Sonar model to use for generating the answer.\n\n"
-                "  [bold]sonar[/bold]               Fast, affordable general-purpose model\n"
+                "  [bold]sonar[/bold]               Fast, affordable general-purpose model (default)\n"
                 "  [bold]sonar-pro[/bold]            More capable, multi-step reasoning\n"
                 "  [bold]sonar-reasoning[/bold]      Specialized for complex analytical questions\n"
                 "  [bold]sonar-deep-research[/bold]  Extended research with multiple search rounds\n\n"
@@ -379,7 +406,7 @@ def ask(
                 "Use 'sonar-pro' for deeper analysis."
             ),
         ),
-    ] = "sonar",
+    ] = None,
     system_prompt: Annotated[
         str | None,
         typer.Option(
@@ -493,11 +520,11 @@ def ask(
     raw_json = _read_json_input(json_input)
 
     cli_kwargs: dict[str, Any] = {
-        "model": model if model != "sonar" else None,  # Only override if not default
+        "model": model,
         "system_prompt": system_prompt,
         "search_mode": mode,
         "search_recency_filter": recency,
-        "search_domain_filter": domains.split(",") if domains else None,
+        "search_domain_filter": _split_csv(domains),
         "temperature": temperature,
         "max_tokens": max_tokens,
         "reasoning_effort": reasoning,
@@ -508,10 +535,8 @@ def ask(
     if question is not None:
         cli_kwargs["question"] = question
 
-    if raw_json:
+    if raw_json or any(v is not None for v in cli_kwargs.values()):
         params = merge_json_with_cli(AskInput, raw_json, cli_kwargs)
-    elif question is not None:
-        params = AskInput(question=question, model=model)
     else:
         typer.echo(ctx.get_help())
         raise SystemExit(0)
@@ -537,11 +562,23 @@ def ask(
         return_images=params.return_images or None,
     ))
 
-    content = ""
-    if response.choices:
-        msg = response.choices[0].message
-        if msg and msg.content:
-            content = msg.content
+    if not response.choices:
+        render_error(
+            "Empty response from API",
+            "The API returned no choices. This may indicate a content filter or upstream error.",
+            state.fmt,
+            exit_code=5,
+        )
+
+    msg = response.choices[0].message
+    content = msg.content if msg and msg.content else ""
+    if not content:
+        render_error(
+            "Empty response from API",
+            "The API returned a choice with no content.",
+            state.fmt,
+            exit_code=5,
+        )
 
     citations = list(response.citations) if hasattr(response, "citations") and response.citations else []
 
@@ -588,9 +625,9 @@ def chat(
         ),
     ] = None,
     model: Annotated[
-        str,
+        str | None,
         typer.Option("--model", "-m", help="Model to use. See 'ask --help' for descriptions."),
-    ] = "sonar",
+    ] = None,
     system_prompt: Annotated[
         str | None,
         typer.Option("--system", "-s", help="System prompt to guide the AI's behavior."),
@@ -666,11 +703,11 @@ def chat(
     raw_json = _read_json_input(json_input)
 
     cli_kwargs: dict[str, Any] = {
-        "model": model if model != "sonar" else None,
+        "model": model,
         "system_prompt": system_prompt,
         "search_mode": mode,
         "search_recency_filter": recency,
-        "search_domain_filter": domains.split(",") if domains else None,
+        "search_domain_filter": _split_csv(domains),
         "temperature": temperature,
         "max_tokens": max_tokens,
         "reasoning_effort": reasoning,
@@ -679,10 +716,8 @@ def chat(
     if question is not None:
         cli_kwargs["question"] = question
 
-    if raw_json:
+    if raw_json or any(v is not None for v in cli_kwargs.values()):
         params = merge_json_with_cli(AskInput, raw_json, cli_kwargs)
-    elif question is not None:
-        params = AskInput(question=question, model=model)
     else:
         typer.echo(ctx.get_help())
         raise SystemExit(0)
@@ -708,25 +743,29 @@ def chat(
     full_content = ""
     citations: list[str] = []
     usage_info = None
+    stream_error: BaseException | None = None
 
-    for chunk in stream:
-        if chunk.choices:
-            delta = chunk.choices[0].delta
-            if delta and delta.content:
-                render_streaming_chunk(delta.content, state.fmt)
-                full_content += delta.content
+    try:
+        for chunk in stream:
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    render_streaming_chunk(delta.content, state.fmt)
+                    full_content += delta.content
 
-        if hasattr(chunk, "citations") and chunk.citations:
-            citations = list(chunk.citations)
-        if hasattr(chunk, "usage") and chunk.usage:
-            u = chunk.usage
-            usage_info = UsageInfo(
-                prompt_tokens=getattr(u, "prompt_tokens", 0) or 0,
-                completion_tokens=getattr(u, "completion_tokens", 0) or 0,
-                total_tokens=getattr(u, "total_tokens", 0) or 0,
-            )
+            if hasattr(chunk, "citations") and chunk.citations:
+                citations = list(chunk.citations)
+            if hasattr(chunk, "usage") and chunk.usage:
+                u = chunk.usage
+                usage_info = UsageInfo(
+                    prompt_tokens=getattr(u, "prompt_tokens", 0) or 0,
+                    completion_tokens=getattr(u, "completion_tokens", 0) or 0,
+                    total_tokens=getattr(u, "total_tokens", 0) or 0,
+                )
+    except BaseException as exc:
+        stream_error = exc
 
-    # Finish streaming output
+    # Finish streaming output -- always flush partial state, even on error
     if state.fmt == OutputFormat.TEXT:
         print()  # newline after streamed content
         if citations:
@@ -737,8 +776,11 @@ def chat(
         print(file=sys.stderr)  # newline after stderr progress
         output = AskOutput(
             content=full_content,
-            model=params.model,
+            model=params.model or "sonar",
             citations=citations,
             usage=usage_info,
         )
         render(output, state.fmt)
+
+    if stream_error is not None:
+        raise stream_error
