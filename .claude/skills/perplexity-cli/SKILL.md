@@ -90,10 +90,10 @@ perplexity-cli ask "Python packaging" | jq '.citations[]'
 
 Load these when you need full option tables, schemas, or patterns:
 
-- **Full command syntax + all flags** → [references/commands.md](references/commands.md)
-- **JSON input/output schemas** → [references/schemas.md](references/schemas.md)
-- **Agent recipes + piping patterns** → [references/patterns.md](references/patterns.md)
-- **Model selection guide** → [references/models.md](references/models.md)
+- **Full command syntax + all flags** → [commands/SKILL.md](commands/SKILL.md)
+- **JSON input/output schemas** → [schemas/SKILL.md](schemas/SKILL.md)
+- **Agent recipes + piping patterns** → [patterns/SKILL.md](patterns/SKILL.md)
+- **Model selection guide** → [models/SKILL.md](models/SKILL.md)
 
 ---
 
