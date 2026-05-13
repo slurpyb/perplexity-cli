@@ -25,6 +25,7 @@ perplexity-cli ask "Python ORMs" | jq -r '.citations | to_entries[] | "[\(.key+1
 perplexity-cli search "AI frameworks" | jq '.results[] | "\(.name): \(.url)"'
 
 # Search: only results that have snippets
+# NOTE: returns [] on the OpenRouter fallback path (no snippet exposed there)
 perplexity-cli search "async Rust" | jq '[.results[] | select(.snippet != null)]'
 
 # Token cost of a query
@@ -82,6 +83,83 @@ perplexity-cli chat "What is async/await?" --no-stream | jq -r '.content'
 
 ---
 
+## Research Methodology — Read This First
+
+**Prefer many small queries over one monolithic question.** Big composite queries collapse into shallow surface-level answers. Several focused queries — followed by reflection on the answers, then a new round of follow-ups — produce dramatically better synthesis.
+
+**Start broad, circle in.** Hyper-specific opening questions double down on whatever bias is in the prompt. The model anchors to your phrasing instead of the actual landscape. Open wide, see what comes back, then narrow to the real questions surfaced by the first round.
+
+### Anti-pattern (one big monolithic ask)
+
+```bash
+# ❌ Lazy: one giant question, single shallow answer, no chance to course-correct
+perplexity-cli ask "Compare PostgreSQL vs MySQL vs SQLite vs CockroachDB vs DynamoDB \
+  for a multi-region SaaS with strong consistency, 10M users, sub-100ms p99 latency, \
+  and tell me which one to pick and why" --model sonar-pro
+```
+
+### Pattern (broad → reflect → narrow)
+
+```bash
+#!/usr/bin/env bash
+# Round 1: broad landscape — what are the real options?
+perplexity-cli ask "What database architectures do multi-region SaaS products use in 2026?" \
+  --model sonar-pro \
+  | jq -r '.content' > /tmp/r1.txt
+
+# AGENT REFLECTS on /tmp/r1.txt:
+#   - which architectures showed up?
+#   - which constraints actually drive the choice?
+#   - what assumptions in the original prompt were wrong?
+
+# Round 2: narrow on the real axes surfaced by round 1
+perplexity-cli ask "How do products handle write conflicts under multi-region active-active Postgres?" \
+  --model sonar-pro --recency year | jq -r '.content' > /tmp/r2a.txt
+
+perplexity-cli ask "What latency penalty does CockroachDB serializable isolation add at 10M user scale?" \
+  --model sonar-pro --recency year | jq -r '.content' > /tmp/r2b.txt
+
+# AGENT REFLECTS again. Round 3 = decide what's missing, fill the gap.
+perplexity-cli ask "Which of these tradeoffs change when sub-100ms p99 is a hard constraint?" \
+  --model sonar-pro | jq -r '.content' > /tmp/r3.txt
+```
+
+### Rules of thumb
+
+| Situation | What to do |
+|---|---|
+| Topic is unfamiliar | Round 1 must be **deliberately vague**. "What do people use for X?" beats "Should I use Foo or Bar for X?" |
+| You think you already know the answer | Bias check — phrase Round 1 as if you're learning the topic for the first time |
+| One question has 3+ "and" clauses | Split it. Each clause becomes its own ask. |
+| Two queries return overlapping content | You're not narrowing enough — make Round 2 sharper based on Round 1 specifics |
+| Answer feels generic | Take a concrete noun/term from the response and ask a follow-up centered on it |
+
+### Reflect-loop template
+
+```bash
+TOPIC="$1"
+
+# Broad opener — no opinions baked in
+R1=$(perplexity-cli ask "What is the current landscape of $TOPIC?" --model sonar-pro | jq -r '.content')
+
+# Pull 2-3 specific terms or options the answer surfaced.
+# (Agent does this — don't pre-assume what they'll be.)
+TERMS=$(echo "$R1" | extract_specific_terms.sh)   # your extraction step
+
+# Round 2: one focused ask per surfaced term
+for term in $TERMS; do
+  perplexity-cli ask "What are the failure modes / tradeoffs of $term in $TOPIC?" \
+    --model sonar-pro --recency year \
+    | jq -r '.content' > "/tmp/r2-$term.txt"
+done
+
+# Round 3: synthesis question that references what you actually learned
+perplexity-cli ask "Given <specific findings from r2>, which approach fits <real constraint>?" \
+  --model sonar-pro
+```
+
+---
+
 ## Multi-Step Research Workflow
 
 ```bash
@@ -119,10 +197,10 @@ fi
 
 # Exit code map:
 # 0  = success
-# 2  = auth error (bad/missing PERPLEXITY_API_KEY)
-# 3  = rate limit
+# 2  = auth error (no usable PERPLEXITY_API_KEY or OPENROUTER_API_KEY)
+# 3  = rate limit (after fallback also exhausted)
 # 4  = validation error (bad JSON, bad field value)
-# 5+ = server error
+# 5+ = server error (after fallback also exhausted)
 ```
 
 ---

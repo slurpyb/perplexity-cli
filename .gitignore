@@ -27,3 +27,4 @@ uv.lock
 .codemap/events.log
 .codemap/watch.pid
 .codemap/handoff.*
+.envrc

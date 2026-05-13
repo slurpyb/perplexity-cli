@@ -1,23 +1,21 @@
 ---
-name: perplexity-cli
+name: web-search-with-perplexity
 description: >-
-  Perplexity AI CLI tool reference for agents. Provides correct command
-  syntax, flag ordering rules, JSON schemas, and agent patterns.
-  TRIGGER when: user mentions "perplexity-cli", "perplexity cli",
-  "perplexity search", "perplexity ask", "perplexity chat",
-  or asks how to use, query, or invoke Perplexity from the command line.
-  Also triggers when a user is writing a shell command or script that
-  calls perplexity-cli and needs correct syntax.
+  Web search via Perplexity AI CLI (perplexity-cli). Use for any web
+  research, fact-finding, "look this up", "search the web", or
+  AI-grounded answer with citations. Three commands: search (raw URLs),
+  ask (AI answer + citations), chat (streaming AI answer). Supports
+  PERPLEXITY_API_KEY primary backend with OPENROUTER_API_KEY fallback.
 origin: local
 metadata:
   repo: perplexity-cli
-  version: "1.0.0"
+  version: "1.1.0"
 allowed-tools:
   - Read
   - Bash
 ---
 
-# perplexity-cli
+# web-search-with-perplexity
 
 CLI wrapper for the Perplexity AI API. Three commands: `search`, `ask`, `chat`.
 
@@ -86,6 +84,16 @@ perplexity-cli ask "Python packaging" | jq '.citations[]'
 
 ---
 
+## Research Methodology — Read Before Composing Queries
+
+**Many small queries beat one monolithic ask.** A composite "compare A vs B vs C and tell me which" produces shallow surface-level output. Several focused queries — followed by reflection on the answers, then a new round of follow-ups — produce dramatically better synthesis.
+
+**Start broad, circle in.** Hyper-specific opening questions anchor the model to your prompt's bias instead of the actual landscape. Open wide, see what comes back, then narrow to the real questions surfaced by Round 1.
+
+Pattern: `broad ask → reflect on answer → narrower asks on what surfaced → reflect → synthesis ask`. Full templates and rules of thumb in [patterns/SKILL.md](patterns/SKILL.md#research-methodology--read-this-first).
+
+---
+
 ## Detailed References
 
 Load these when you need full option tables, schemas, or patterns:
@@ -99,8 +107,27 @@ Load these when you need full option tables, schemas, or patterns:
 
 ## Setup
 
+At least one of these must be set:
+
 ```bash
-export PERPLEXITY_API_KEY="pplx-..."   # required; or pass --api-key globally
+export PERPLEXITY_API_KEY="pplx-..."        # primary backend; or pass --api-key globally
+export OPENROUTER_API_KEY="sk-or-v1-..."    # fallback backend (also works standalone)
 ```
+
+**Backend resolution:**
+
+| Keys present | Behavior |
+|---|---|
+| `PERPLEXITY_API_KEY` only | Native Perplexity API |
+| `OPENROUTER_API_KEY` only | OpenRouter (routes to `perplexity/sonar*` models) |
+| Both | Perplexity primary; falls back to OpenRouter on auth/quota/server/network errors (`401/402/403/408/429/5xx` + connection failures) |
+| Neither | Exits `2` with a help message |
+
+`--api-key` only sets the Perplexity key. OpenRouter key is env-only.
+
+**Fallback caveats:**
+- `search` on the OpenRouter path emulates via `perplexity/sonar-pro` chat. Returns `url` + `name` (title), but `snippet` is always `null` — OpenRouter doesn't expose snippet text.
+- `chat` streaming fallback only triggers **before** the first chunk emits. Mid-stream errors propagate (no restart, would duplicate stdout).
+- JSON output schema unchanged regardless of backend.
 
 Exit codes: `0` success · `2` auth/usage error · `3` rate limit · `4` validation · `5+` server error

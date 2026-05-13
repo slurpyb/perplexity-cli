@@ -10,6 +10,8 @@ description: Full command syntax, all flags, and worked examples for perplexity-
 Returns titles, URLs, and snippets. Does **not** generate an AI answer.
 Use `ask` or `chat` when you need an AI-synthesized response.
 
+> **OpenRouter fallback:** if Perplexity errors or only `OPENROUTER_API_KEY` is set, `search` is emulated via `perplexity/sonar-pro` chat. `snippet` and `date` are always `null` on this path. See root [SKILL.md](../SKILL.md#setup) for backend resolution.
+
 ### Syntax
 
 ```bash
@@ -208,7 +210,7 @@ These always go **before** the subcommand:
 |------|------|-------------|
 | `--text` | flag | Plain text output instead of JSON |
 | `--pretty` | flag | Indented JSON output |
-| `--api-key` | string | API key (overrides `PERPLEXITY_API_KEY` env var) |
+| `--api-key` | string | Perplexity API key (overrides `PERPLEXITY_API_KEY` env var) |
 
 ```bash
 # Correct placement — all before the subcommand
@@ -216,3 +218,12 @@ perplexity-cli --text ask "question"
 perplexity-cli --pretty search "query"
 perplexity-cli --api-key pplx-xxx --text ask "question"
 ```
+
+## Backend / Auth
+
+| Env var | Role |
+|---|---|
+| `PERPLEXITY_API_KEY` | Primary backend (native Perplexity API). Overridable via `--api-key`. |
+| `OPENROUTER_API_KEY` | Fallback backend (env-only; routes to `perplexity/sonar*` models on OpenRouter). |
+
+Both set → Perplexity primary, OpenRouter fallback on `401/402/403/408/429/5xx` + network errors. Only OpenRouter set → OpenRouter standalone. Neither → exit `2`.

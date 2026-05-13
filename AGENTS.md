@@ -1,7 +1,7 @@
 # perplexity-cli — Agent Reference
 
 > **Installed as:** `perplexity-cli`
-> **Auth:** `export PERPLEXITY_API_KEY="your-key"` (required)
+> **Auth:** at least one of `PERPLEXITY_API_KEY` or `OPENROUTER_API_KEY` (env vars). `--api-key` only sets the Perplexity key.
 
 ---
 
@@ -36,6 +36,62 @@ precede `search`, `ask`, or `chat`.
 
 ---
 
+## Research Methodology — Read Before Composing Queries
+
+**Many small queries beat one monolithic ask.** A single "compare A vs B vs C and tell me which" produces shallow surface-level output. Several focused queries — followed by reflection on the answers, then a new round of follow-ups based on what surfaced — produce dramatically better synthesis.
+
+**Start broad, circle in.** Hyper-specific opening questions anchor the model to your prompt's bias instead of the actual landscape. Open wide, see what comes back, then narrow on what Round 1 surfaced.
+
+### Loop shape
+
+```
+broad ask → reflect on answer → narrower asks on terms/options that surfaced
+         → reflect → synthesis ask referencing what you actually learned
+```
+
+### Anti-pattern
+
+```bash
+# ❌ One big monolithic ask. Single shallow answer, no chance to course-correct,
+#    biased by every "and" clause baked into the question.
+perplexity-cli ask "Compare PostgreSQL vs MySQL vs SQLite vs CockroachDB \
+  for a multi-region SaaS with strong consistency, 10M users, sub-100ms p99 \
+  and tell me which one to pick" --model sonar-pro
+```
+
+### Pattern
+
+```bash
+# Round 1: deliberately broad — what's the actual landscape?
+perplexity-cli ask "What database architectures do multi-region SaaS products use in 2026?" \
+  --model sonar-pro | jq -r '.content'
+
+# Agent reflects: which architectures showed up? which constraints really drive the choice?
+# Then Round 2 — one focused ask per surfaced option / axis:
+
+perplexity-cli ask "How do products handle write conflicts under multi-region active-active Postgres?" \
+  --model sonar-pro --recency year | jq -r '.content'
+
+perplexity-cli ask "What latency penalty does CockroachDB serializable isolation add at 10M user scale?" \
+  --model sonar-pro --recency year | jq -r '.content'
+
+# Agent reflects again. Round 3 = synthesis using what was actually learned.
+perplexity-cli ask "Given <specific findings>, which approach fits <real constraint>?" \
+  --model sonar-pro
+```
+
+### Rules of thumb
+
+| Situation | What to do |
+|---|---|
+| Topic unfamiliar | Round 1 must be **deliberately vague**. "What do people use for X?" beats "Should I use Foo or Bar for X?" |
+| You think you know the answer | Bias check — phrase Round 1 as if learning the topic for the first time |
+| Question has 3+ "and" clauses | Split it. Each clause becomes its own ask. |
+| Two queries return overlapping content | Not narrowing enough — make Round 2 sharper based on Round 1 specifics |
+| Answer feels generic | Pull a concrete noun/term from the response, ask a follow-up centered on it |
+
+---
+
 ## Output Formats (global flags)
 
 ```bash
@@ -55,10 +111,28 @@ In `chat` (streaming) + `--text` mode: tokens stream to **stdout**.
 # Install
 uv pip install -e .          # or: pip install -e .
 
-# API key (required)
-export PERPLEXITY_API_KEY="pplx-..."
-# Or: perplexity-cli --api-key pplx-... ask "question"
+# At least one API key is required
+export PERPLEXITY_API_KEY="pplx-..."        # primary backend; or pass --api-key
+export OPENROUTER_API_KEY="sk-or-v1-..."    # fallback backend (also works standalone)
 ```
+
+### Backend resolution
+
+| Keys present | Behavior |
+|---|---|
+| `PERPLEXITY_API_KEY` only | Native Perplexity API |
+| `OPENROUTER_API_KEY` only | OpenRouter, routes to `perplexity/sonar*` models |
+| Both | Perplexity primary; falls back to OpenRouter on `401/402/403/408/429/5xx` + network errors |
+| Neither | Exits `2` with help message |
+
+`--api-key` overrides `PERPLEXITY_API_KEY` only. There is no `--api-key` for OpenRouter.
+
+### Fallback caveats
+
+- `search` on the OpenRouter path emulates via `perplexity/sonar-pro` chat completion. Returns `url` + `name` (title); `snippet` and `date` are always `null` (OpenRouter doesn't expose snippet text).
+- `chat` streaming fallback only triggers **before the first chunk emits**. Mid-stream errors propagate (no restart, would duplicate stdout).
+- `related_questions` is always `[]` on the OpenRouter path (not exposed by OpenRouter).
+- All other fields (`content`, `citations`, `usage`) work identically on both backends. JSON output schema unchanged.
 
 ---
 
@@ -320,3 +394,6 @@ fi
 | Parsing streamed stderr as JSON | Redirect `2>/dev/null` or use `ask` instead |
 | Forgetting `query` key in JSON for search | `{"query": "..."}` is required |
 | Forgetting `question` key in JSON for ask | `{"question": "..."}` is required |
+| One monolithic question with 3+ "and" clauses | Split into rounds; reflect between rounds (see Research Methodology) |
+| Hyper-specific opening question | Start broad ("what is the landscape of X?") then narrow based on what surfaced |
+| Filtering search on `.snippet != null` | Returns `[]` on OpenRouter fallback path — `snippet` is always null there |

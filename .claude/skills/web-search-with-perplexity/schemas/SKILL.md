@@ -74,6 +74,10 @@ Passed via `--json 'JSON'` or piped via stdin.
 }
 ```
 
+**Backend differences:**
+- Native Perplexity backend: `snippet` and `date` populated when available.
+- OpenRouter fallback (when `PERPLEXITY_API_KEY` missing/failing): `snippet` and `date` are **always `null`** — OpenRouter only exposes `url` + `title`. Filter on `.snippet != null` will return `[]` on this path.
+
 **Accessing results with jq:**
 ```bash
 # All URLs
@@ -174,6 +178,7 @@ Passed via `--json 'JSON'` or piped via stdin.
 - `usage` — always present; token counts may be 0 if not reported by the API
 - `related_questions` — only populated when `--related` / `return_related_questions: true` was set
 - `chat` output omits `related_questions` (not supported in streaming mode)
+- OpenRouter fallback path: `related_questions` is always `[]` (not exposed by OpenRouter). `citations` and `usage` work normally.
 
 **Accessing output with jq:**
 ```bash
