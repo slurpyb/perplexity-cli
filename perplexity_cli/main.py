@@ -11,9 +11,10 @@ import typer
 from pydantic import ValidationError
 from perplexity import APIError, APIStatusError
 
-from .client import get_client
-from .models import AskInput, AskOutput, SearchInput, SearchOutput, SearchResultItem, UsageInfo, merge_json_with_cli
+from .client import get_provider
+from .models import AskInput, AskOutput, SearchInput, UsageInfo, merge_json_with_cli
 from .output import OutputFormat, render, render_error, render_streaming_chunk
+from .providers import OpenRouterError
 
 app = typer.Typer(
     name="perplexity-cli",
@@ -82,6 +83,18 @@ def handle_errors(f):
             render_error(
                 f"API error ({exc.status_code})",
                 str(exc.message) if hasattr(exc, "message") else str(exc),
+                fmt,
+                exit_code=exit_code,
+            )
+        except OpenRouterError as exc:
+            code_map = {401: 2, 402: 2, 403: 2, 429: 3, 400: 4}
+            exit_code = code_map.get(
+                exc.status_code,
+                5 if exc.status_code and exc.status_code >= 500 else 1,
+            )
+            render_error(
+                f"OpenRouter API error ({exc.status_code})" if exc.status_code else "OpenRouter API error",
+                exc.message,
                 fmt,
                 exit_code=exit_code,
             )
@@ -169,16 +182,6 @@ def _read_json_input(json_input: str | None) -> str | None:
         data = sys.stdin.read().strip()
         return data if data else None
     return None
-
-
-# ---------------------------------------------------------------------------
-# Helper: build SDK kwargs, excluding None values
-# ---------------------------------------------------------------------------
-
-
-def _sdk_kwargs(**kwargs: Any) -> dict[str, Any]:
-    """Filter out None values so the SDK uses its own defaults."""
-    return {k: v for k, v in kwargs.items() if v is not None}
 
 
 def _split_csv(value: str | None) -> list[str] | None:
@@ -342,31 +345,8 @@ def search(
         typer.echo(ctx.get_help())
         raise SystemExit(0)
 
-    client = get_client(state.api_key)
-    response = client.search.create(**_sdk_kwargs(
-        query=params.query,
-        search_mode=params.search_mode,
-        search_recency_filter=params.search_recency_filter,
-        search_domain_filter=params.search_domain_filter,
-        search_language_filter=params.search_language_filter,
-        max_results=params.max_results,
-        max_tokens=params.max_tokens,
-        country=params.country,
-        search_after_date_filter=params.search_after_date_filter,
-        search_before_date_filter=params.search_before_date_filter,
-    ))
-
-    results = []
-    if hasattr(response, "results") and response.results:
-        for r in response.results:
-            results.append(SearchResultItem(
-                url=getattr(r, "url", ""),
-                name=getattr(r, "name", None) or getattr(r, "title", None),
-                snippet=getattr(r, "snippet", None) or getattr(r, "text", None),
-                date=getattr(r, "date", None),
-            ))
-
-    output = SearchOutput(query=params.query, results=results)
+    provider = get_provider(state.api_key)
+    output = provider.search(params)
     render(output, state.fmt)
 
 
@@ -541,38 +521,10 @@ def ask(
         typer.echo(ctx.get_help())
         raise SystemExit(0)
 
-    # Build messages
-    messages: list[dict[str, str]] = []
-    if params.system_prompt:
-        messages.append({"role": "system", "content": params.system_prompt})
-    messages.append({"role": "user", "content": params.question})
+    provider = get_provider(state.api_key)
+    output = provider.ask(params)
 
-    client = get_client(state.api_key)
-    response = client.chat.completions.create(**_sdk_kwargs(
-        messages=messages,
-        model=params.model,
-        stream=False,
-        search_mode=params.search_mode,
-        search_recency_filter=params.search_recency_filter,
-        search_domain_filter=params.search_domain_filter,
-        temperature=params.temperature,
-        max_tokens=params.max_tokens,
-        reasoning_effort=params.reasoning_effort,
-        return_related_questions=params.return_related_questions or None,
-        return_images=params.return_images or None,
-    ))
-
-    if not response.choices:
-        render_error(
-            "Empty response from API",
-            "The API returned no choices. This may indicate a content filter or upstream error.",
-            state.fmt,
-            exit_code=5,
-        )
-
-    msg = response.choices[0].message
-    content = msg.content if msg and msg.content else ""
-    if not content:
+    if not output.content:
         render_error(
             "Empty response from API",
             "The API returned a choice with no content.",
@@ -580,28 +532,6 @@ def ask(
             exit_code=5,
         )
 
-    citations = list(response.citations) if hasattr(response, "citations") and response.citations else []
-
-    usage_info = None
-    if hasattr(response, "usage") and response.usage:
-        u = response.usage
-        usage_info = UsageInfo(
-            prompt_tokens=getattr(u, "prompt_tokens", 0) or 0,
-            completion_tokens=getattr(u, "completion_tokens", 0) or 0,
-            total_tokens=getattr(u, "total_tokens", 0) or 0,
-        )
-
-    related_qs: list[str] = []
-    if hasattr(response, "related_questions") and response.related_questions:
-        related_qs = list(response.related_questions)
-
-    output = AskOutput(
-        content=content,
-        model=params.model,
-        citations=citations,
-        usage=usage_info,
-        related_questions=related_qs,
-    )
     render(output, state.fmt)
 
 
@@ -722,46 +652,22 @@ def chat(
         typer.echo(ctx.get_help())
         raise SystemExit(0)
 
-    messages: list[dict[str, str]] = []
-    if params.system_prompt:
-        messages.append({"role": "system", "content": params.system_prompt})
-    messages.append({"role": "user", "content": params.question})
-
-    client = get_client(state.api_key)
-    stream = client.chat.completions.create(**_sdk_kwargs(
-        messages=messages,
-        model=params.model,
-        stream=True,
-        search_mode=params.search_mode,
-        search_recency_filter=params.search_recency_filter,
-        search_domain_filter=params.search_domain_filter,
-        temperature=params.temperature,
-        max_tokens=params.max_tokens,
-        reasoning_effort=params.reasoning_effort,
-    ))
+    provider = get_provider(state.api_key)
 
     full_content = ""
     citations: list[str] = []
-    usage_info = None
+    usage_info: UsageInfo | None = None
     stream_error: BaseException | None = None
 
     try:
-        for chunk in stream:
-            if chunk.choices:
-                delta = chunk.choices[0].delta
-                if delta and delta.content:
-                    render_streaming_chunk(delta.content, state.fmt)
-                    full_content += delta.content
-
-            if hasattr(chunk, "citations") and chunk.citations:
-                citations = list(chunk.citations)
-            if hasattr(chunk, "usage") and chunk.usage:
-                u = chunk.usage
-                usage_info = UsageInfo(
-                    prompt_tokens=getattr(u, "prompt_tokens", 0) or 0,
-                    completion_tokens=getattr(u, "completion_tokens", 0) or 0,
-                    total_tokens=getattr(u, "total_tokens", 0) or 0,
-                )
+        for event in provider.chat_stream(params):
+            if event.content_delta:
+                render_streaming_chunk(event.content_delta, state.fmt)
+                full_content += event.content_delta
+            if event.citations:
+                citations = list(event.citations)
+            if event.usage is not None:
+                usage_info = event.usage
     except BaseException as exc:
         stream_error = exc
 

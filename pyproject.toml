@@ -5,6 +5,7 @@ description = "CLI tool wrapping the Perplexity AI API for web search, chat comp
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "httpx>=0.28.1",
     "perplexityai>=0.31.0",
     "pydantic>=2.12.5",
     "rich>=14.3.3",
