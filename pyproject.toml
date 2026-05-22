@@ -21,3 +21,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["perplexity_cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short"
+
+[tool.coverage.run]
+source = ["perplexity_cli"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
