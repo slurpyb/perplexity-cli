@@ -15,6 +15,23 @@ class OutputFormat(str, Enum):
     TEXT = "text"
 
 
+def resolve_output_format(
+    text: bool, pretty: bool, config_output: str | None
+) -> OutputFormat:
+    """Resolve the output format with precedence: flags > config > JSON default.
+
+    --text and --pretty (mutually exclusive flags) win. Otherwise the config
+    file's `output` value applies, falling back to compact JSON.
+    """
+    if text:
+        return OutputFormat.TEXT
+    if pretty:
+        return OutputFormat.PRETTY
+    if config_output:
+        return OutputFormat(config_output)
+    return OutputFormat.JSON
+
+
 def render(data: BaseModel, fmt: OutputFormat) -> None:
     """Render a Pydantic model to stdout in the requested format."""
     if fmt == OutputFormat.TEXT:

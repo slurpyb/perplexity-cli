@@ -3,17 +3,40 @@ from __future__ import annotations
 import os
 import sys
 
+from .config import Config
 from .providers import FallbackProvider, OpenRouterProvider, PerplexityProvider, Provider
 
 
-def get_provider(perplexity_api_key: str | None = None) -> Provider:
+def resolve_keys(
+    perplexity_api_key: str | None,
+    config: Config | None,
+) -> tuple[str | None, str | None]:
+    """Resolve (perplexity_key, openrouter_key) with precedence:
+
+        explicit flag > environment variable > config file
+
+    The explicit `perplexity_api_key` only feeds the Perplexity slot
+    (there is intentionally no flag for OpenRouter). A `None` result means
+    no key was found for that backend.
+    """
+    pkey = perplexity_api_key or os.environ.get("PERPLEXITY_API_KEY")
+    okey = os.environ.get("OPENROUTER_API_KEY")
+    if config is not None:
+        pkey = pkey or config.perplexity_api_key
+        okey = okey or config.openrouter_api_key
+    return pkey, okey
+
+
+def get_provider(
+    perplexity_api_key: str | None = None,
+    config: Config | None = None,
+) -> Provider:
     """Resolve an API Provider based on available credentials.
 
-    Resolution order:
-      1. Explicit `perplexity_api_key` (from --api-key) takes precedence over
-         the PERPLEXITY_API_KEY environment variable for the Perplexity backend.
-      2. PERPLEXITY_API_KEY env (read if no explicit key passed).
-      3. OPENROUTER_API_KEY env (always read).
+    Resolution order per backend (see resolve_keys):
+      1. Explicit `perplexity_api_key` (from --api-key), Perplexity slot only.
+      2. PERPLEXITY_API_KEY / OPENROUTER_API_KEY environment variables.
+      3. Config file values (config.perplexity_api_key / openrouter_api_key).
 
     Result:
       - Both keys present  → FallbackProvider(Perplexity primary, OpenRouter fallback).
@@ -31,8 +54,7 @@ def get_provider(perplexity_api_key: str | None = None) -> Provider:
         )
         raise SystemExit(2)
 
-    pkey = perplexity_api_key or os.environ.get("PERPLEXITY_API_KEY")
-    okey = os.environ.get("OPENROUTER_API_KEY")
+    pkey, okey = resolve_keys(perplexity_api_key, config)
 
     if pkey and okey:
         return FallbackProvider(PerplexityProvider(pkey), OpenRouterProvider(okey))

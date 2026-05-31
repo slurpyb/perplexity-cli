@@ -124,16 +124,18 @@ def merge_json_with_cli(
     model_class: type[T],
     json_str: str | None,
     cli_kwargs: dict[str, Any],
+    config_defaults: dict[str, Any] | None = None,
 ) -> T:
-    """Parse JSON input, overlay explicit CLI arguments, return a validated model.
+    """Layer config defaults, JSON input, and CLI arguments into a validated model.
 
-    JSON provides the base values. CLI arguments that are not None override
-    the JSON values. This lets agents pass a JSON blob while humans can
-    override specific fields from the command line.
+    Precedence (lowest to highest): config defaults < JSON < CLI. Config-file
+    values seed the base, JSON overrides them, and explicit CLI arguments (those
+    that are not None) win over both. This lets a global config set defaults
+    while agents pass a JSON blob and humans override individual flags.
     """
-    base: dict[str, Any] = {}
+    base: dict[str, Any] = dict(config_defaults or {})
     if json_str:
-        base = json.loads(json_str)
+        base.update(json.loads(json_str))
 
     # Overlay CLI kwargs that were explicitly provided (not None)
     for key, value in cli_kwargs.items():

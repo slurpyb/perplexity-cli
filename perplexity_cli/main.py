@@ -12,8 +12,15 @@ from pydantic import ValidationError
 from perplexity import APIError, APIStatusError
 
 from .client import get_provider
+from .config import Config, load_config
 from .models import AskInput, AskOutput, SearchInput, UsageInfo, merge_json_with_cli
-from .output import OutputFormat, render, render_error, render_streaming_chunk
+from .output import (
+    OutputFormat,
+    render,
+    render_error,
+    render_streaming_chunk,
+    resolve_output_format,
+)
 from .providers import OpenRouterError
 
 app = typer.Typer(
@@ -41,6 +48,7 @@ class State:
     def __init__(self) -> None:
         self.fmt: OutputFormat = OutputFormat.JSON
         self.api_key: str | None = None
+        self.config: Config = Config()
 
 
 # ---------------------------------------------------------------------------
@@ -161,11 +169,20 @@ def main(
 ) -> None:
     """Configure global options for output format and authentication."""
     state = State()
-    if text:
-        state.fmt = OutputFormat.TEXT
-    elif pretty:
-        state.fmt = OutputFormat.PRETTY
     state.api_key = api_key
+
+    # Flag-derived format is known before the config loads, so a broken config
+    # can still report its error in the user's requested format.
+    flag_fmt = (
+        OutputFormat.TEXT if text else OutputFormat.PRETTY if pretty else OutputFormat.JSON
+    )
+    try:
+        config = load_config()
+    except (json.JSONDecodeError, ValidationError) as exc:
+        render_error("Invalid config file", str(exc), flag_fmt, exit_code=4)
+
+    state.config = config
+    state.fmt = resolve_output_format(text, pretty, config.output)
     ctx.obj = state
 
 
@@ -338,14 +355,14 @@ def search(
         cli_kwargs["query"] = query
 
     if raw_json or any(v is not None for v in cli_kwargs.values()):
-        params = merge_json_with_cli(SearchInput, raw_json, cli_kwargs)
-    elif query is not None:
-        params = SearchInput(query=query)
+        params = merge_json_with_cli(
+            SearchInput, raw_json, cli_kwargs, state.config.search_defaults()
+        )
     else:
         typer.echo(ctx.get_help())
         raise SystemExit(0)
 
-    provider = get_provider(state.api_key)
+    provider = get_provider(state.api_key, state.config)
     output = provider.search(params)
     render(output, state.fmt)
 
@@ -516,12 +533,14 @@ def ask(
         cli_kwargs["question"] = question
 
     if raw_json or any(v is not None for v in cli_kwargs.values()):
-        params = merge_json_with_cli(AskInput, raw_json, cli_kwargs)
+        params = merge_json_with_cli(
+            AskInput, raw_json, cli_kwargs, state.config.ask_defaults()
+        )
     else:
         typer.echo(ctx.get_help())
         raise SystemExit(0)
 
-    provider = get_provider(state.api_key)
+    provider = get_provider(state.api_key, state.config)
     output = provider.ask(params)
 
     if not output.content:
@@ -647,12 +666,14 @@ def chat(
         cli_kwargs["question"] = question
 
     if raw_json or any(v is not None for v in cli_kwargs.values()):
-        params = merge_json_with_cli(AskInput, raw_json, cli_kwargs)
+        params = merge_json_with_cli(
+            AskInput, raw_json, cli_kwargs, state.config.ask_defaults()
+        )
     else:
         typer.echo(ctx.get_help())
         raise SystemExit(0)
 
-    provider = get_provider(state.api_key)
+    provider = get_provider(state.api_key, state.config)
 
     full_content = ""
     citations: list[str] = []
