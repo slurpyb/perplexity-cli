@@ -28,3 +28,13 @@ uv.lock
 .codemap/watch.pid
 .codemap/handoff.*
 .envrc
+
+# Test artifacts
+.coverage
+.coverage.*
+htmlcov/
+
+# Local environment files (may hold secrets — never commit)
+.devenv
+.env
+.env.*
