@@ -1,7 +1,7 @@
 # perplexity-cli — Agent Reference
 
 > **Installed as:** `perplexity-cli`
-> **Auth:** at least one of `PERPLEXITY_API_KEY` or `OPENROUTER_API_KEY` (env vars). `--api-key` only sets the Perplexity key.
+> **Auth:** at least one of `PERPLEXITY_API_KEY` or `OPENROUTER_API_KEY` (env var, config file, or `--api-key` for Perplexity only). See [Config File](#config-file-optional).
 
 ---
 
@@ -129,10 +129,62 @@ export OPENROUTER_API_KEY="sk-or-v1-..."    # fallback backend (also works stand
 
 ### Fallback caveats
 
-- `search` on the OpenRouter path emulates via `perplexity/sonar-pro` chat completion. Returns `url` + `name` (title); `snippet` and `date` are always `null` (OpenRouter doesn't expose snippet text).
+- `search` on the OpenRouter path emulates via `perplexity/sonar-pro` chat completion with OpenRouter's **web-search plugin** enabled. Returns `url` + `name` (title) + `snippet` (from each citation's `content`, whitespace-collapsed and truncated to ~320 chars). `date` is still `null` (the plugin doesn't expose it). The web plugin adds a per-search cost.
 - `chat` streaming fallback only triggers **before the first chunk emits**. Mid-stream errors propagate (no restart, would duplicate stdout).
 - `related_questions` is always `[]` on the OpenRouter path (not exposed by OpenRouter).
 - All other fields (`content`, `citations`, `usage`) work identically on both backends. JSON output schema unchanged.
+
+---
+
+## Config File (optional)
+
+Set keys and defaults once instead of passing them every invocation. The CLI
+reads an optional JSON file at:
+
+```
+$XDG_CONFIG_HOME/perplexity-cli/perplexity-cli.json
+# falls back to:
+~/.config/perplexity-cli/perplexity-cli.json
+```
+
+The file is **read-only** — there is no `config` subcommand; edit the JSON
+directly. A missing file is ignored. Every field is optional:
+
+```json
+{
+  "perplexity_api_key": "pplx-...",
+  "openrouter_api_key": "sk-or-v1-...",
+  "model": "sonar-pro",
+  "output": "text",
+  "search_mode": "academic",
+  "recency": "week",
+  "reasoning_effort": "high",
+  "temperature": 0.2
+}
+```
+
+### Precedence (highest wins)
+
+```
+CLI flag  >  environment variable  >  config file  >  built-in default
+```
+
+- **API keys**: `--api-key` > `PERPLEXITY_API_KEY` env > `perplexity_api_key`;
+  `OPENROUTER_API_KEY` env > `openrouter_api_key`. Backend resolution (above)
+  is unchanged — config keys just feed the same logic.
+- **`model` / search defaults** (`search_mode`, `recency`, `reasoning_effort`,
+  `temperature`): used only when not supplied via `--json` or a CLI flag.
+- **`output`**: applied unless `--text` / `--pretty` is passed. Values: `json`,
+  `pretty`, `text`.
+
+### Notes
+
+- Secrets live in plaintext here — keep the file private. If it is
+  group/world-readable the CLI prints a one-line `chmod 600` warning to stderr.
+- A malformed file or an unknown/invalid field exits `4` with a validation
+  message (it never silently ignores typos).
+- `search` only consumes `search_mode` and `recency` from the config; `model`,
+  `reasoning_effort`, and `temperature` apply to `ask` / `chat`.
 
 ---
 
@@ -396,4 +448,4 @@ fi
 | Forgetting `question` key in JSON for ask | `{"question": "..."}` is required |
 | One monolithic question with 3+ "and" clauses | Split into rounds; reflect between rounds (see Research Methodology) |
 | Hyper-specific opening question | Start broad ("what is the landscape of X?") then narrow based on what surfaced |
-| Filtering search on `.snippet != null` | Returns `[]` on OpenRouter fallback path — `snippet` is always null there |
+| Filtering search on `.date != null` | `date` is always null on the OpenRouter path (snippet is populated there via the web plugin) |

@@ -9,7 +9,7 @@ description: >-
 origin: local
 metadata:
   repo: perplexity-cli
-  version: "1.1.0"
+  version: "1.2.0"
 allowed-tools:
   - Read
   - Bash
@@ -105,14 +105,38 @@ Load these when you need full option tables, schemas, or patterns:
 
 ---
 
-## Setup
+## Setup — do it ONCE, then run bare commands
 
-At least one of these must be set:
+**Preferred: a config file** at `~/.config/perplexity-cli/perplexity-cli.json` (honors
+`$XDG_CONFIG_HOME`). Put your keys *and* preferred defaults there, then just run
+`perplexity-cli ask "..."` — no env vars, no `--api-key`, no repeating `--model`/`--recency`
+on every call.
+
+```jsonc
+{
+  "perplexity_api_key": "pplx-...",      // chmod 600 — this holds secrets
+  "openrouter_api_key": "sk-or-v1-...",  // optional fallback
+  "model": "sonar-pro",                   // default model for ask/chat
+  "output": "json",                       // json | pretty | text
+  "search_mode": "web",                   // optional defaults: search_mode, recency,
+  "recency": "month",                     //   reasoning_effort, temperature
+  "reasoning_effort": "high",
+  "temperature": 0.2
+}
+```
+
+All fields optional. Missing file = ignored. Unknown key / bad value = exit `4` (no silent
+ignore). If the file is group/world-readable the CLI prints a one-line `chmod 600` warning.
+**Only pass flags to override the config for a single call.**
+
+Env vars also work (and override the config file) if you prefer:
 
 ```bash
 export PERPLEXITY_API_KEY="pplx-..."        # primary backend; or pass --api-key globally
 export OPENROUTER_API_KEY="sk-or-v1-..."    # fallback backend (also works standalone)
 ```
+
+**Precedence (highest wins):** `CLI flag > env var > config file > built-in default`.
 
 **Backend resolution:**
 

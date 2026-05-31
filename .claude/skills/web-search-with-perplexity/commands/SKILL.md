@@ -10,7 +10,7 @@ description: Full command syntax, all flags, and worked examples for perplexity-
 Returns titles, URLs, and snippets. Does **not** generate an AI answer.
 Use `ask` or `chat` when you need an AI-synthesized response.
 
-> **OpenRouter fallback:** if Perplexity errors or only `OPENROUTER_API_KEY` is set, `search` is emulated via `perplexity/sonar-pro` chat. `snippet` and `date` are always `null` on this path. See root [SKILL.md](../SKILL.md#setup) for backend resolution.
+> **OpenRouter fallback:** if Perplexity errors or only `OPENROUTER_API_KEY` is set, `search` is emulated via `perplexity/sonar-pro` chat. `snippet` and `date` are always `null` on this path. See root [SKILL.md](../SKILL.md#setup--do-it-once-then-run-bare-commands) for backend resolution.
 
 ### Syntax
 
@@ -221,9 +221,17 @@ perplexity-cli --api-key pplx-xxx --text ask "question"
 
 ## Backend / Auth
 
-| Env var | Role |
-|---|---|
-| `PERPLEXITY_API_KEY` | Primary backend (native Perplexity API). Overridable via `--api-key`. |
-| `OPENROUTER_API_KEY` | Fallback backend (env-only; routes to `perplexity/sonar*` models on OpenRouter). |
+**Best practice: configure once** in `~/.config/perplexity-cli/perplexity-cli.json`
+(`perplexity_api_key`, `openrouter_api_key`, plus default `model`/`output`/search params),
+then run bare commands. See root [SKILL.md](../SKILL.md#setup--do-it-once-then-run-bare-commands).
 
-Both set → Perplexity primary, OpenRouter fallback on `401/402/403/408/429/5xx` + network errors. Only OpenRouter set → OpenRouter standalone. Neither → exit `2`.
+Each setting resolves with precedence **`CLI flag > env var > config file > built-in default`**:
+
+| Source | Keys it provides |
+|---|---|
+| `--api-key` flag | Perplexity key only (highest priority) |
+| `PERPLEXITY_API_KEY` env | Primary backend (native Perplexity API) |
+| `OPENROUTER_API_KEY` env | Fallback backend (routes to `perplexity/sonar*` on OpenRouter) |
+| config file | `perplexity_api_key` / `openrouter_api_key` (lowest priority) |
+
+Both keys present (any source) → Perplexity primary, OpenRouter fallback on `401/402/403/408/429/5xx` + network errors. Only OpenRouter → OpenRouter standalone. Neither → exit `2`.
