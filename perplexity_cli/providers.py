@@ -28,6 +28,14 @@ from .models import (
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 _OPENROUTER_DEFAULT_TIMEOUT = httpx.Timeout(120.0, connect=10.0)
 _OPENROUTER_SEARCH_MODEL = "perplexity/sonar-pro"
+# OpenRouter's web-search plugin attaches url_citation annotations that include a
+# `content` field (snippet text). A model's native citations expose only
+# url+title, so `search` opts into the plugin to recover snippets.
+_OPENROUTER_WEB_PLUGIN_MAX_RESULTS = 10
+# `search` discards the model's prose answer (it only wants the citations), so the
+# completion is capped to keep that throwaway generation cheap.
+_OPENROUTER_SEARCH_TOKEN_CAP = 64
+_OPENROUTER_SNIPPET_MAX_CHARS = 320
 _FALLBACK_STATUS_CODES = frozenset({401, 402, 403, 408, 429, 500, 502, 503, 504})
 
 
@@ -95,6 +103,20 @@ def _usage_from_obj(usage: Any) -> UsageInfo | None:
         completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
         total_tokens=getattr(usage, "total_tokens", 0) or 0,
     )
+
+
+def _snippet_from_content(content: str | None) -> str | None:
+    """Condense OpenRouter web-plugin `content` into a short search snippet.
+
+    The plugin returns long, newline-and-`[...]`-laden page extracts; collapse
+    whitespace and truncate so the result reads like a search snippet.
+    """
+    text = " ".join((content or "").split())
+    if not text:
+        return None
+    if len(text) <= _OPENROUTER_SNIPPET_MAX_CHARS:
+        return text
+    return text[:_OPENROUTER_SNIPPET_MAX_CHARS].rstrip() + "…"
 
 
 # ---------------------------------------------------------------------------
@@ -277,8 +299,15 @@ class OpenRouterProvider:
         return response.json()
 
     @staticmethod
-    def _extract_annotations(message: dict[str, Any]) -> list[tuple[str, str | None]]:
-        out: list[tuple[str, str | None]] = []
+    def _extract_citations(
+        message: dict[str, Any],
+    ) -> list[tuple[str, str | None, str | None]]:
+        """Return deduped (url, title, content) from message annotations.
+
+        `content` is present only when the request used the web-search plugin;
+        the native citation path leaves it None.
+        """
+        out: list[tuple[str, str | None, str | None]] = []
         seen: set[str] = set()
         for ann in message.get("annotations") or []:
             uc = ann.get("url_citation") or {}
@@ -286,7 +315,7 @@ class OpenRouterProvider:
             if not url or url in seen:
                 continue
             seen.add(url)
-            out.append((url, uc.get("title")))
+            out.append((url, uc.get("title"), uc.get("content")))
         return out
 
     def search(self, params: SearchInput) -> SearchOutput:
@@ -303,12 +332,24 @@ class OpenRouterProvider:
         body = self._build_chat_body(
             ask_params, stream=False, model_override=_OPENROUTER_SEARCH_MODEL
         )
+        # Opt into OpenRouter's web-search plugin so each citation carries
+        # `content` (snippet text). The model's prose answer is unused here.
+        body["plugins"] = [
+            {
+                "id": "web",
+                "max_results": params.max_results or _OPENROUTER_WEB_PLUGIN_MAX_RESULTS,
+            }
+        ]
+        body.setdefault("max_tokens", _OPENROUTER_SEARCH_TOKEN_CAP)
         data = self._post_json("/chat/completions", body)
         choices = data.get("choices") or []
         message = (choices[0].get("message") if choices else None) or {}
+        # date is not exposed by the web plugin -> stays None on this backend.
         items = [
-            SearchResultItem(url=url, name=title, snippet=None, date=None)
-            for url, title in self._extract_annotations(message)
+            SearchResultItem(
+                url=url, name=title, snippet=_snippet_from_content(content), date=None
+            )
+            for url, title, content in self._extract_citations(message)
         ]
         if params.max_results is not None:
             items = items[: params.max_results]
@@ -320,7 +361,7 @@ class OpenRouterProvider:
         choices = data.get("choices") or []
         message = (choices[0].get("message") if choices else None) or {}
         content = message.get("content") or ""
-        citations = [url for url, _ in self._extract_annotations(message)]
+        citations = [url for url, _, _ in self._extract_citations(message)]
         return AskOutput(
             content=content,
             model=params.model,
